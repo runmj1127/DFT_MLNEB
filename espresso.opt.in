@@ -3,7 +3,7 @@
     forc_conv_thr =  0.01
     max_seconds   =  172800.0
     nstep         =  100
-    pseudo_dir    = "C:\Users\User\.nanolabo\.pseudopot"
+    pseudo_dir    = "./"
     verbosity     = "low"
 /
 
@@ -184,5 +184,6 @@ H       0.478137   5.045555  20.791480
 N       2.719328   6.869001  20.496436
 O       1.241637   5.205108  20.090784
 H       0.039213   8.151184  18.761545
+
 
 
