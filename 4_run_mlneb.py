@@ -1,8 +1,8 @@
-
-# 4_run_mlneb.py (Auto-generated)
+# 4_run_mlneb.py (최종 수정본)
 import copy, sys, traceback
 from ase.io import read
-from ase.calculators.espresso import Espresso, EspressoProfile
+# EspressoProfile은 더 이상 사용하지 않으므로 import에서 제거합니다.
+from ase.calculators.espresso import Espresso
 from catlearn.optimize.mlneb import MLNEB
 
 # Part 1: Global Settings
@@ -11,50 +11,50 @@ OPTIMIZED_FINAL = 'final.traj'
 N_IMAGES = 5
 NEB_FMAX = 0.1
 TRAJECTORY_FILE = 'mlneb_final.traj'
-N_CORES = 12
+N_CORES = 32 # 사용할 코어 수
 
-# Part 2: Quantum Espresso Calculator
+# Part 2: Quantum Espresso Calculator (수정된 부분)
 pseudopotentials = {
     'O': 'O.pbe-rrkjus.UPF',
     'Cu': 'Cu.pbe-n-van_ak.UPF',
     'N': 'N.pbe-rrkjus.UPF',
     'H': 'H.pbe-rrkjus.UPF',
 }
-qe_input_data = {
+input_data = {
     'control': {
-        'verbosity': "low"
+        'verbosity': "'low'" # 문자열 값은 따옴표로 감싸야 합니다.
     },
     'system': {
         'degauss': 0.01,
         'ecutrho': 225.0,
         'ecutwfc': 25.0,
         'ibrav': 0,
-        'nat': 134,
         'nspin': 2,
-        'ntyp': 4,
-        'occupations': "smearing",
-        'smearing': "gaussian",
+        'occupations': "'smearing'",
+        'smearing': "'gaussian'",
         'starting_magnetization(1)': 0.0,
         'starting_magnetization(2)': 0.2
     },
     'electrons': {
         'conv_thr': 1.0e-4,
-        'diagonalization': "david",
+        'diagonalization': "'david'",
         'electron_maxstep': 200,
         'mixing_beta': 0.1,
-        'startingpot': "atomic",
-        'startingwfc': "atomic+random"
+        'startingpot': "'atomic'",
+        'startingwfc': "'atomic+random'"
     }
 }
-command = f'mpirun -np {N_CORES} pw.x'
-profile = EspressoProfile(command=command, pseudo_dir='./)
+# EspressoProfile을 사용하지 않고, Espresso에 직접 command와 pseudo_dir를 전달합니다.
+command = f'mpirun -np {N_CORES} pw.x -in PREFIX.pwi > PREFIX.pwo'
 ase_calculator = Espresso(
-    label='qe_calc_neb', pseudopotentials=pseudopotentials,
-    input_data=qe_input_data, kpts=(1, 1, 1), profile=profile)
+    label='qe_calc_neb',
+    command=command,
+    pseudopotentials=pseudopotentials,
+    pseudo_dir='./pseudo/', # 오타 수정 및 경로 완성
+    input_data=input_data,
+    kpts=(1, 1, 1))
 
-# Part 3: ML-NEB Run
-# 4_run_mlneb.py 파일의 run_main_mlneb 함수를 아래 코드로 교체하세요.
-
+# Part 3: ML-NEB Run (사용자께서 수정한 올바른 버전)
 def run_main_mlneb():
     print("\\n>>> ML-NEB calculation starting.")
     
@@ -62,7 +62,7 @@ def run_main_mlneb():
     initial_atoms = read(OPTIMIZED_INITIAL)
     final_images = read(OPTIMIZED_FINAL)
     
-    # 2. 읽어온 구조에 계산기를 명시적으로 연결해줍니다. (이 부분이 핵심)
+    # 2. 읽어온 구조에 계산기를 명시적으로 연결해줍니다.
     initial_atoms.calc = copy.deepcopy(ase_calculator)
     final_images.calc = copy.deepcopy(ase_calculator)
 
@@ -74,7 +74,6 @@ def run_main_mlneb():
         print("\\n>>> ML-NEB calculation completed successfully!")
     except Exception:
         traceback.print_exc()
-
 
 if __name__ == "__main__":
     run_main_mlneb()
