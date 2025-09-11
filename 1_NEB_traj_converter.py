@@ -1,4 +1,4 @@
-# 1_NEB_traj_converter.py (ASE를 사용하여 안정적으로 수정된 최종 버전)
+# 1_NEB_traj_converter.py (모든 문제를 해결한 최종 버전)
 
 from ase.io import read, write
 import sys
@@ -7,27 +7,21 @@ def convert_qe_to_traj(input_filename='espresso.neb.in'):
     """
     Quantum ESPRESSO 입력 파일을 읽어 첫 번째와 마지막 이미지를
     unoptimized .traj 파일로 저장합니다.
+    (ibrav, a, b, c 등 원본 파일을 수정할 필요 없음)
     """
     try:
-        # ASE의 강력한 파서를 사용하여 QE 입력 파일에서 모든 이미지(구조)를 읽어옵니다.
-        # index=':'는 모든 이미지를 읽으라는 의미입니다.
-        images = read(input_filename, index=':', format='espresso-in')
-        
-        if len(images) < 2:
-            print(f"오류: '{input_filename}'에서 2개 미만의 이미지를 찾았습니다.")
-            print("파일에 FIRST_IMAGE와 LAST_IMAGE가 모두 포함되어 있는지 확인하세요.")
-            sys.exit(1)
-
-        # 첫 번째 이미지를 저장합니다.
-        write('initial_unoptimized.traj', images[0])
+        # ASE를 사용해 첫 번째 이미지(index=0)만 명시적으로 읽어옵니다.
+        initial_image = read(input_filename, index=0, format='espresso-in')
+        write('initial_unoptimized.traj', initial_image)
         print("-> 'initial_unoptimized.traj' 파일이 생성되었습니다.")
         
-        # 마지막 이미지를 저장합니다.
-        write('final_unoptimized.traj', images[-1])
+        # ASE를 사용해 마지막 이미지(index=-1)만 명시적으로 읽어옵니다.
+        final_image = read(input_filename, index=-1, format='espresso-in')
+        write('final_unoptimized.traj', final_image)
         print("-> 'final_unoptimized.traj' 파일이 생성되었습니다.")
 
     except FileNotFoundError:
-        print(f"오류: 입력 파일 '{input_filename}'을 찾을 수 없습니다.")
+        print(f"오류: 입력 파일 '{filename}'을 찾을 수 없습니다.")
         sys.exit(1)
     except Exception as e:
         print(f"파일 처리 중 예기치 않은 오류가 발생했습니다: {e}")
