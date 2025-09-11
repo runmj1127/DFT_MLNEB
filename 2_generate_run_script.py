@@ -75,7 +75,9 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
 
     pseudos_str = format_pseudos(settings['pseudos'])
     
-    # ASE 정책에 따라 ibrav=0으로 강제 설정하고 관련 키 제거
+    if 'pseudo_dir' in settings['control']:
+        del settings['control']['pseudo_dir']
+
     lattice_keys_to_remove = ['a', 'b', 'c', 'cosab', 'cosac', 'cosbc']
     for key in lattice_keys_to_remove:
         if key in settings['system']:
@@ -88,10 +90,8 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
     kpts_str = settings['kpoints_str']
 
     # --- 공통 설정 텍스트 생성 ---
-    common_settings_template = f"""
-# Part 2: Quantum Espresso Calculator
-N_CORES = 32
-command = f'mpirun -np {{N_CORES}} pw.x -in PREFIX.pwi > PREFIX.pwo'
+    # 이 블록은 생성될 스크립트 파일 내부에 그대로 들어갈 텍스트 덩어리입니다.
+    common_calculator_setup = f"""
 pseudopotentials = {{
 {pseudos_str}
 }}
@@ -122,10 +122,15 @@ UNOPTIMIZED_FINAL = 'final_unoptimized.traj'
 OPTIMIZED_INITIAL = 'initial.traj'
 OPTIMIZED_FINAL = 'final.traj'
 OPTIMIZE_FMAX = 0.1
-{common_settings_template}
+N_CORES = 32
+
+# Part 2: Quantum Espresso Calculator
+{common_calculator_setup}
+command = f'mpirun -np {{N_CORES}} pw.x -in PREFIX.pwi > PREFIX.pwo'
+
 ase_calculator = Espresso(
     label='qe_calc_opt', command=command, pseudopotentials=pseudopotentials,
-    pseudo_dir='./', input_data=input_data, kpts={kpts_str})
+    pseudo_dir='./pseudo/', input_data=input_data, kpts={kpts_str})
 
 # Part 3: Endpoint Optimization Logic
 def optimize_endpoints():
@@ -164,10 +169,15 @@ OPTIMIZED_FINAL = 'final.traj'
 N_IMAGES = 5
 NEB_FMAX = 0.1
 TRAJECTORY_FILE = 'mlneb_final.traj'
-{common_settings_template}
+N_CORES = 32
+
+# Part 2: Quantum Espresso Calculator
+{common_calculator_setup}
+command = f'mpirun -np {{N_CORES}} pw.x -in PREFIX.pwi > PREFIX.pwo'
+
 ase_calculator = Espresso(
     label='qe_calc_neb', command=command, pseudopotentials=pseudopotentials,
-    pseudo_dir={pseudo_dir_str}, input_data=input_data, kpts={kpts_str})
+    pseudo_dir='./pseudo/', input_data=input_data, kpts={kpts_str})
 
 # Part 3: ML-NEB Run
 def run_main_mlneb():
@@ -195,4 +205,3 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     parsed_settings = parse_qe_input()
     create_run_scripts(parsed_settings)
-
