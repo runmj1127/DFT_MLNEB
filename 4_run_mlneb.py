@@ -53,24 +53,28 @@ ase_calculator = Espresso(
     input_data=qe_input_data, kpts=(1, 1, 1), profile=profile)
 
 # Part 3: ML-NEB Run
+# 4_run_mlneb.py 파일의 run_main_mlneb 함수를 아래 코드로 교체하세요.
+
 def run_main_mlneb():
     print("\\n>>> ML-NEB calculation starting.")
     
     # 1. 최적화된 초기/최종 구조 파일을 직접 읽어옵니다.
-    initial_images = read(OPTIMIZED_INITIAL)
+    initial_atoms = read(OPTIMIZED_INITIAL)
     final_images = read(OPTIMIZED_FINAL)
     
-    # 2. 읽어온 구조에 계산기를 명시적으로 연결해줍니다.
-    initial_images.calc = copy.deepcopy(ase_calculator)
+    # 2. 읽어온 구조에 계산기를 명시적으로 연결해줍니다. (이 부분이 핵심)
+    initial_atoms.calc = copy.deepcopy(ase_calculator)
     final_images.calc = copy.deepcopy(ase_calculator)
 
-    # 3. 파일 경로 대신, 계산기가 연결된 Atoms 객체를 전달합니다.
-    mlneb = MLNEB(start=initial_images, end=final_images,
+    # 3. 파일 경로 대신, 계산기가 연결된 Atoms 객체를 직접 전달합니다.
+    mlneb = MLNEB(start=initial_atoms, end=final_images,
                   ase_calc=copy.deepcopy(ase_calculator), n_images=N_IMAGES, k=0.1)
     try:
         mlneb.run(fmax=NEB_FMAX, trajectory=TRAJECTORY_FILE)
         print("\\n>>> ML-NEB calculation completed successfully!")
     except Exception:
         traceback.print_exc()
+
+
 if __name__ == "__main__":
     run_main_mlneb()
