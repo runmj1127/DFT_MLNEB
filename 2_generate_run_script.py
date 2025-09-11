@@ -75,11 +75,6 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
 
     pseudos_str = format_pseudos(settings['pseudos'])
     
-    # 입력 파일에서 pseudo_dir을 읽어오거나 기본값 설정
-    pseudo_dir_str = settings['control'].get('pseudo_dir', "'./pseudo/'")
-    if 'pseudo_dir' in settings['control']:
-        del settings['control']['pseudo_dir']
-
     # ASE 정책에 따라 ibrav=0으로 강제 설정하고 관련 키 제거
     lattice_keys_to_remove = ['a', 'b', 'c', 'cosab', 'cosac', 'cosbc']
     for key in lattice_keys_to_remove:
@@ -130,7 +125,7 @@ OPTIMIZE_FMAX = 0.1
 {common_settings_template}
 ase_calculator = Espresso(
     label='qe_calc_opt', command=command, pseudopotentials=pseudopotentials,
-    pseudo_dir={pseudo_dir_str}, input_data=input_data, kpts={kpts_str})
+    pseudo_dir='./', input_data=input_data, kpts={kpts_str})
 
 # Part 3: Endpoint Optimization Logic
 def optimize_endpoints():
@@ -200,3 +195,4 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     parsed_settings = parse_qe_input()
     create_run_scripts(parsed_settings)
+
