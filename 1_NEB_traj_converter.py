@@ -23,10 +23,7 @@ def convert_qe_to_traj(input_filename='espresso.neb.in'):
     except FileNotFoundError:
         print(f"오류: 입력 파일 '{input_filename}'을 찾을 수 없습니다.")
         sys.exit(1)
-    except Exception as e:
-        print(f"파일 처리 중 예기치 않은 오류가 발생했습니다: {e}")
-        print("입력 파일의 형식이 올바른지 다시 확인해 주세요.")
-        sys.exit(1)
 
 if __name__ == "__main__":
     convert_qe_to_traj()
+
