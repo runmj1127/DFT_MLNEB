@@ -137,12 +137,15 @@ N_CORES = 32
 
 # Part 2: Quantum Espresso Calculator
 {common_calculator_setup}
-command = f'mpirun -np {{N_CORES}} pw.x -in PREFIX.pwi > PREFIX.pwo'
-
 ase_calculator = Espresso(
-    label='qe_calc_opt', command=command, pseudopotentials=pseudopotentials,
-    pseudo_dir='./pseudo/', input_data=input_data, kpts={kpts_str})
-
+    label='qe_calc_opt',
+    nprocs=N_CORES,           # 사용할 코어 수를 직접 지정
+    executable='pw.x',        # 실행 파일 이름 지정
+    pseudopotentials=pseudopotentials,
+    pseudo_dir='./pseudo/',
+    input_data=input_data,
+    kpts=kpts_str
+)
 # Part 3: Endpoint Optimization Logic
 def optimize_endpoints():
     try:
@@ -216,4 +219,5 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     parsed_settings = parse_qe_input()
     create_run_scripts(parsed_settings)
+
 
