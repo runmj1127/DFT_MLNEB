@@ -52,7 +52,9 @@ def parse_qe_input(filename='espresso.neb.in'):
                         symbol, pseudo_file = parts[0], parts[2]
                         settings['pseudos'][symbol] = pseudo_file
                 elif in_kpoints_block and 'K_POINTS' not in line_upper:
-                    settings['kpoints_str'] = f"({', '.join(stripped_line.split()[:3])})"
+                    k_values = stripped_line.split()[:3]
+                    if all(k.isdigit() for k in k_values):
+                         settings['kpoints_str'] = f"({', '.join(k_values)})"
                     in_kpoints_block = False
 
     except FileNotFoundError:
@@ -67,9 +69,9 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
         prefix = ' ' * indent
         return ',\n'.join([f"{prefix}'{k}': {v}" for k, v in d.items()])
 
-    def format_pseudos(d, indent=4):
+    def format_pseudos(d, indent=12):
         prefix = ' ' * indent
-        return '\n'.join([f"{prefix}'{k}': '{v}'," for k, v in d.items()])
+        return ',\n'.join([f"{prefix}'{k}': '{v}'" for k, v in d.items()])
 
     pseudos_str = format_pseudos(settings['pseudos'])
     
@@ -90,6 +92,27 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
     electrons_str = format_dict_items(settings['electrons'])
     kpts_str = settings['kpoints_str']
 
+    # --- 공통 설정 텍스트 생성 ---
+    common_settings_template = f"""
+# Part 2: Quantum Espresso Calculator
+N_CORES = 32
+command = f'mpirun -np {{N_CORES}} pw.x -in PREFIX.pwi > PREFIX.pwo'
+pseudopotentials = {{
+{pseudos_str}
+}}
+input_data = {{
+    'control': {{
+{control_str}
+    }},
+    'system': {{
+{system_str}
+    }},
+    'electrons': {{
+{electrons_str}
+    }}
+}}
+"""
+
     # --- 템플릿 1: 최적화 스크립트 ---
     optimization_template = f"""
 # {opt_filename} (Auto-generated)
@@ -104,27 +127,10 @@ UNOPTIMIZED_FINAL = 'final_unoptimized.traj'
 OPTIMIZED_INITIAL = 'initial.traj'
 OPTIMIZED_FINAL = 'final.traj'
 OPTIMIZE_FMAX = 0.1
-N_CORES = 32
-
-# Part 2: Quantum Espresso Calculator
-command = f'mpirun -np {N_CORES} pw.x -in PREFIX.pwi > PREFIX.pwo'
-pseudopotentials = {{
-{pseudos_str}
-}}
-qe_input_data = {{
-    'control': {{
-{control_str}
-    }},
-    'system': {{
-{system_str}
-    }},
-    'electrons': {{
-{electrons_str}
-    }}
-}}
+{common_settings_template}
 ase_calculator = Espresso(
     label='qe_calc_opt', command=command, pseudopotentials=pseudopotentials,
-    pseudo_dir={pseudo_dir_str}, input_data=qe_input_data, kpts={kpts_str})
+    pseudo_dir={pseudo_dir_str}, input_data=input_data, kpts={kpts_str})
 
 # Part 3: Endpoint Optimization Logic
 def optimize_endpoints():
@@ -163,27 +169,10 @@ OPTIMIZED_FINAL = 'final.traj'
 N_IMAGES = 5
 NEB_FMAX = 0.1
 TRAJECTORY_FILE = 'mlneb_final.traj'
-N_CORES = 32
-
-# Part 2: Quantum Espresso Calculator
-command = f'mpirun -np {N_CORES} pw.x -in PREFIX.pwi > PREFIX.pwo'
-pseudopotentials = {{
-{pseudos_str}
-}}
-qe_input_data = {{
-    'control': {{
-{control_str}
-    }},
-    'system': {{
-{system_str}
-    }},
-    'electrons': {{
-{electrons_str}
-    }}
-}}
+{common_settings_template}
 ase_calculator = Espresso(
     label='qe_calc_neb', command=command, pseudopotentials=pseudopotentials,
-    pseudo_dir={pseudo_dir_str}, input_data=qe_input_data, kpts={kpts_str})
+    pseudo_dir={pseudo_dir_str}, input_data=input_data, kpts={kpts_str})
 
 # Part 3: ML-NEB Run
 def run_main_mlneb():
