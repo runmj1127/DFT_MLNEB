@@ -51,7 +51,7 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
         return '\n'.join([f"{prefix}'{k}': '{v}'," for k, v in d.items()])
 
     pseudos_str = format_pseudos(settings['pseudos'])
-    pseudo_dir_str = "'/home/minjae/qe-7.4.1/pseudo/'"
+    pseudo_dir_str = "'./"
     if 'pseudo_dir' in settings['control']: del settings['control']['pseudo_dir']
 
         # ibrav = 0 과 충돌하는 격자 상수 관련 키들을 제거합니다.
@@ -190,4 +190,5 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     parsed_settings = parse_qe_input()
+
     create_run_scripts(parsed_settings)
