@@ -100,7 +100,7 @@ qe_input_data = {{
     }}
 }}
 command = f'mpirun -np {{N_CORES}} pw.x'
-profile = EspressoProfile(command=command, pseudo_dir={pseudo_dir_str})
+profile = EspressoProfile(command=command, pseudo_dir='./')
 ase_calculator = Espresso(
     label='qe_calc_opt', pseudopotentials=pseudopotentials,
     input_data=qe_input_data, kpts={kpts_str}, profile=profile)
@@ -192,3 +192,4 @@ if __name__ == "__main__":
     parsed_settings = parse_qe_input()
 
     create_run_scripts(parsed_settings)
+
