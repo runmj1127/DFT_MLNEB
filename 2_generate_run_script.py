@@ -1,73 +1,50 @@
 # 2_generate_run_scripts.py (모든 오류 수정된 최종 버전)
 
 import sys
+import re
 
 def parse_qe_input(filename='espresso.neb.in'):
     """
-    espresso.neb.in 파일을 파싱하여 주요 계산 파라미터를 추출합니다.
-    (문자열 값 자동 따옴표 처리 기능 추가)
+    espresso.neb.in 파일을 안정적으로 파싱하여 ASE와 호환되는 설정을 추출합니다.
     """
     settings = {
         'control': {}, 'system': {}, 'electrons': {},
         'pseudos': {}, 'kpoints_str': '(1, 1, 1)'
     }
-    current_block = None
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            in_species_block = False
-            in_kpoints_block = False
+    
+    with open(filename, 'r', encoding='utf-8') as f:
+        content = f.read()
 
-            for line in lines:
-                stripped_line = line.strip()
-                if not stripped_line or stripped_line.startswith(('!', '#')):
-                    continue
+    # --- Namelist 파싱 ---
+    for section in ['CONTROL', 'SYSTEM', 'ELECTRONS']:
+        # re.DOTALL은 줄바꿈을 포함하여 매칭
+        match = re.search(f'&{section}(.*?)/', content, re.IGNORECASE | re.DOTALL)
+        if match:
+            for line in match.group(1).splitlines():
+                line = line.split('!')[0].strip() # 주석 제거
+                if '=' in line:
+                    parts = [p.strip().strip(',') for p in line.split('=')]
+                    key, value = parts[0].lower(), parts[1]
+                    
+                    # 값이 문자열이면 (숫자로 변환 불가) 따옴표 유지 또는 추가
+                    try:
+                        float(value)
+                    except ValueError:
+                        if not (value.startswith("'") and value.endswith("'")):
+                            value = f"'{value}'"
+                    
+                    settings[section.lower()][key] = value
 
-                line_upper = stripped_line.upper()
+    # --- ATOMIC_SPECIES 파싱 ---
+    match = re.search(r'ATOMIC_SPECIES.*?((?:\n\s*\w+\s+[\d.]+\s+\S+)+)', content, re.IGNORECASE | re.DOTALL)
+    if match:
+        for line in match.group(1).strip().splitlines():
+            parts = line.split()
+            if len(parts) >= 3:
+                settings['pseudos'][parts[0]] = parts[2]
 
-                if line_upper.startswith('&'):
-                    current_block = line_upper.strip('&')
-                    in_species_block = False
-                    in_kpoints_block = False
-                elif 'ATOMIC_SPECIES' in line_upper:
-                    current_block = 'SPECIES'
-                    in_species_block = True
-                    in_kpoints_block = False
-                elif 'K_POINTS' in line_upper:
-                    current_block = 'K_POINTS'
-                    in_kpoints_block = True
-                    in_species_block = False
-                elif line_upper.startswith('/'):
-                    current_block = None
-                    in_species_block = False
-                    in_kpoints_block = False
-                
-                if current_block in ['CONTROL', 'SYSTEM', 'ELECTRONS']:
-                    line_no_comment = stripped_line.split('!')[0]
-                    if '=' in line_no_comment:
-                        key, value = [p.strip().strip(',') for p in line_no_comment.split('=')]
-                        
-                        try:
-                            float(value)
-                        except ValueError:
-                            if not (value.startswith("'") and value.endswith("'")):
-                                value = f"'{value}'"
-                        
-                        settings[current_block.lower()][key.lower()] = value
-                elif in_species_block and 'ATOMIC_SPECIES' not in line_upper:
-                    parts = stripped_line.split()
-                    if len(parts) >= 3:
-                        symbol, pseudo_file = parts[0], parts[2]
-                        settings['pseudos'][symbol] = pseudo_file
-                elif in_kpoints_block and 'K_POINTS' not in line_upper:
-                    k_values = stripped_line.split()[:3]
-                    if all(k.isdigit() for k in k_values):
-                         settings['kpoints_str'] = f"({', '.join(k_values)})"
-                    in_kpoints_block = False
-
-    except FileNotFoundError:
-        print(f"오류: 입력 파일 '{filename}'을 찾을 수 없습니다."); sys.exit(1)
     return settings
+
 
 def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filename='4_run_mlneb.py'):
     """
@@ -81,24 +58,34 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
         prefix = ' ' * indent
         return ',\n'.join([f"{prefix}'{k}': '{v}'" for k, v in d.items()])
 
-    pseudos_str = format_pseudos(settings['pseudos'])
-    
+    # --- ASE와 호환되도록 데이터 정리 ---
+    # 1. pseudo_dir은 Espresso()에 직접 전달할 것이므로 input_data에서 제거
     if 'pseudo_dir' in settings['control']:
         del settings['control']['pseudo_dir']
-
+    
+    # 2. ASE 정책에 따라 ibrav=0으로 강제 설정하고 충돌 가능성 있는 키 제거
     lattice_keys_to_remove = ['a', 'b', 'c', 'cosab', 'cosac', 'cosbc']
     for key in lattice_keys_to_remove:
         if key in settings['system']:
             del settings['system'][key]
     settings['system']['ibrav'] = 0
+    
+    # 3. 호환성을 위해 smearing 방식 수정
+    if 'smearing' in settings['system']:
+        settings['system']['smearing'] = "'methfessel-paxton'"
 
+    # --- 템플릿에 들어갈 문자열 준비 ---
+    pseudos_str = format_pseudos(settings['pseudos'])
     control_str = format_dict_items(settings['control'])
     system_str = format_dict_items(settings['system'])
     electrons_str = format_dict_items(settings['electrons'])
-    kpts_str = settings['kpoints_str']
+    kpts_str = settings.get('kpoints_str', '(1, 1, 1)')
 
-    # --- 공통 설정 텍스트 생성 ---
-    common_calculator_setup = f"""
+
+    # --- 공통 설정 템플릿 ---
+    common_template = f"""
+# Part 2: Quantum Espresso Calculator
+N_CORES = 32
 pseudopotentials = {{
 {pseudos_str}
 }}
@@ -114,6 +101,14 @@ input_data = {{
     }}
 }}
 kpts = {kpts_str}
+
+ase_calculator = Espresso(
+    pseudopotentials=pseudopotentials,
+    input_data=input_data,
+    kpts=kpts,
+    pseudo_dir='./pseudo/',
+    nprocs=N_CORES,
+    executable='pw.x')
 """
 
     # --- 템플릿 1: 최적화 스크립트 ---
@@ -130,18 +125,8 @@ UNOPTIMIZED_FINAL = 'final_unoptimized.traj'
 OPTIMIZED_INITIAL = 'initial.traj'
 OPTIMIZED_FINAL = 'final.traj'
 OPTIMIZE_FMAX = 0.1
-N_CORES = 32
-
-# Part 2: Quantum Espresso Calculator
-{common_calculator_setup}
-ase_calculator = Espresso(
-    label='qe_calc_opt',
-    nprocs=N_CORES,
-    executable='pw.x',
-    pseudopotentials=pseudopotentials,
-    pseudo_dir='./pseudo/',
-    input_data=input_data,
-    kpts=kpts)
+{common_template}
+ase_calculator.set_label('qe_calc_opt')
 
 # Part 3: Endpoint Optimization Logic
 def optimize_endpoints():
@@ -151,14 +136,14 @@ def optimize_endpoints():
         initial_atoms.calc = copy.deepcopy(ase_calculator)
         optimizer_initial = BFGS(initial_atoms, trajectory=OPTIMIZED_INITIAL)
         optimizer_initial.run(fmax=OPTIMIZE_FMAX)
-        print(f">>> Initial structure optimization complete! Saved to '{{OPTIMIZED_INITIAL}}'.")
+        print(f">>> Initial structure optimization complete!")
 
         print("\\n>>> Optimizing Final structure...")
         final_atoms = read(UNOPTIMIZED_FINAL)
         final_atoms.calc = copy.deepcopy(ase_calculator)
         optimizer_final = BFGS(final_atoms, trajectory=OPTIMIZED_FINAL)
         optimizer_final.run(fmax=OPTIMIZE_FMAX)
-        print(f">>> Final structure optimization complete! Saved to '{{OPTIMIZED_FINAL}}'.")
+        print(f">>> Final structure optimization complete!")
     except Exception:
         traceback.print_exc()
 
@@ -180,27 +165,17 @@ OPTIMIZED_FINAL = 'final.traj'
 N_IMAGES = 5
 NEB_FMAX = 0.1
 TRAJECTORY_FILE = 'mlneb_final.traj'
-N_CORES = 32
-
-# Part 2: Quantum Espresso Calculator
-{common_calculator_setup}
-ase_calculator = Espresso(
-    label='qe_calc_neb',
-    nprocs=N_CORES,
-    executable='pw.x',
-    pseudopotentials=pseudopotentials,
-    pseudo_dir='./pseudo/',
-    input_data=input_data,
-    kpts=kpts)
+{common_template}
+ase_calculator.set_label('qe_calc_neb')
 
 # Part 3: ML-NEB Run
 def run_main_mlneb():
     print("\\n>>> ML-NEB calculation starting.")
     initial_atoms = read(OPTIMIZED_INITIAL)
-    final_images = read(OPTIMIZED_FINAL)
+    final_atoms = read(OPTIMIZED_FINAL)
     initial_atoms.calc = copy.deepcopy(ase_calculator)
-    final_images.calc = copy.deepcopy(ase_calculator)
-    mlneb = MLNEB(start=initial_atoms, end=final_images,
+    final_atoms.calc = copy.deepcopy(ase_calculator)
+    mlneb = MLNEB(start=initial_atoms, end=final_atoms,
                   ase_calc=copy.deepcopy(ase_calculator), n_images=N_IMAGES, k=0.1)
     try:
         mlneb.run(fmax=NEB_FMAX, trajectory=TRAJECTORY_FILE)
