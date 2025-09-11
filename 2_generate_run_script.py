@@ -1,4 +1,4 @@
-# 2_generate_run_scripts.py (NameError 수정된 최종 버전)
+# 2_generate_run_scripts.py (수정된 최종 버전)
 
 import sys
 
@@ -13,28 +13,48 @@ def parse_qe_input(filename='espresso.neb.in'):
     current_block = None
     try:
         with open(filename, 'r', encoding='utf-8') as f:
-            for line in f:
+            lines = f.readlines()
+            in_species_block = False
+            in_kpoints_block = False
+
+            for line in lines:
                 stripped_line = line.strip()
-                if not stripped_line or stripped_line.startswith(('!', '#')): continue
+                if not stripped_line or stripped_line.startswith(('!', '#')):
+                    continue
+
                 line_upper = stripped_line.upper()
-                if line_upper.startswith(('&', 'ATOMIC_SPECIES', 'K_POINTS', 'BEGIN_POSITIONS')): current_block = None
-                if line_upper.startswith('&'): current_block = line_upper.strip('&')
-                elif 'ATOMIC_SPECIES' in line_upper: current_block = 'SPECIES'
+
+                if line_upper.startswith('&'):
+                    current_block = line_upper.strip('&')
+                    in_species_block = False
+                    in_kpoints_block = False
+                elif 'ATOMIC_SPECIES' in line_upper:
+                    current_block = 'SPECIES'
+                    in_species_block = True
+                    in_kpoints_block = False
                 elif 'K_POINTS' in line_upper:
-                    k_type = stripped_line.split()[-1]
-                    if 'gamma' in k_type.lower(): settings['kpoints_str'] = '(1, 1, 1)'
-                elif current_block and line_upper.startswith('/'): current_block = None
+                    current_block = 'K_POINTS'
+                    in_kpoints_block = True
+                    in_species_block = False
+                elif line_upper.startswith('/'):
+                    current_block = None
+                    in_species_block = False
+                    in_kpoints_block = False
+                
                 if current_block in ['CONTROL', 'SYSTEM', 'ELECTRONS']:
                     line_no_comment = stripped_line.split('!')[0]
-                    line_no_comma = line_no_comment.split(',')[0]
-                    if '=' in line_no_comma:
-                        key, value = [p.strip() for p in line_no_comma.split('=')]
-                        settings[current_block.lower()][key.lower()] = value
-                elif current_block == 'SPECIES':
+                    if '=' in line_no_comment:
+                        key, value = [p.strip() for p in line_no_comment.split('=')]
+                        settings[current_block.lower()][key.lower().strip(',')] = value
+                elif in_species_block and 'ATOMIC_SPECIES' not in line_upper:
                     parts = stripped_line.split()
-                    if len(parts) >= 3 and parts[0].isalpha():
+                    if len(parts) >= 3:
                         symbol, pseudo_file = parts[0], parts[2]
                         settings['pseudos'][symbol] = pseudo_file
+                elif in_kpoints_block and 'K_POINTS' not in line_upper:
+                    settings['kpoints_str'] = f"({', '.join(stripped_line.split()[:3])})"
+                    in_kpoints_block = False
+
     except FileNotFoundError:
         print(f"오류: 입력 파일 '{filename}'을 찾을 수 없습니다."); sys.exit(1)
     return settings
@@ -46,21 +66,23 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
     def format_dict_items(d, indent=8):
         prefix = ' ' * indent
         return ',\n'.join([f"{prefix}'{k}': {v}" for k, v in d.items()])
+
     def format_pseudos(d, indent=4):
         prefix = ' ' * indent
         return '\n'.join([f"{prefix}'{k}': '{v}'," for k, v in d.items()])
 
     pseudos_str = format_pseudos(settings['pseudos'])
-    pseudo_dir_str = "'./"
-    if 'pseudo_dir' in settings['control']: del settings['control']['pseudo_dir']
+    
+    # 입력 파일에서 pseudo_dir을 읽어오거나 기본값 설정
+    pseudo_dir_str = settings['control'].get('pseudo_dir', "'./pseudo/'")
+    if 'pseudo_dir' in settings['control']:
+        del settings['control']['pseudo_dir']
 
-        # ibrav = 0 과 충돌하는 격자 상수 관련 키들을 제거합니다.
+    # ASE 정책에 따라 ibrav=0으로 강제 설정하고 관련 키 제거
     lattice_keys_to_remove = ['a', 'b', 'c', 'cosab', 'cosac', 'cosbc']
     for key in lattice_keys_to_remove:
         if key in settings['system']:
             del settings['system'][key]
-            
-    # ASE 정책에 따라 ibrav=0으로 강제 설정
     settings['system']['ibrav'] = 0
 
     control_str = format_dict_items(settings['control'])
@@ -68,13 +90,13 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
     electrons_str = format_dict_items(settings['electrons'])
     kpts_str = settings['kpoints_str']
 
-    # --- 템플릿 1: 최적화 스크립트 ---
+    # --- 템플릿 1: 최적화 스크립트 (EspressoProfile 제거 및 command 수정) ---
     optimization_template = f"""
 # {opt_filename} (Auto-generated)
 import copy, sys, traceback
 from ase.io import read, write
 from ase.optimize import BFGS
-from ase.calculators.espresso import Espresso, EspressoProfile
+from ase.calculators.espresso import Espresso
 
 # Part 1: Global Settings
 UNOPTIMIZED_INITIAL = 'initial_unoptimized.traj'
@@ -82,9 +104,10 @@ UNOPTIMIZED_FINAL = 'final_unoptimized.traj'
 OPTIMIZED_INITIAL = 'initial.traj'
 OPTIMIZED_FINAL = 'final.traj'
 OPTIMIZE_FMAX = 0.1
-N_CORES = 12
+N_CORES = 32
 
 # Part 2: Quantum Espresso Calculator
+command = f'mpirun -np {N_CORES} pw.x -in PREFIX.pwi > PREFIX.pwo'
 pseudopotentials = {{
 {pseudos_str}
 }}
@@ -99,25 +122,23 @@ qe_input_data = {{
 {electrons_str}
     }}
 }}
-command = f'mpirun -np {{N_CORES}} pw.x'
-profile = EspressoProfile(command=command, pseudo_dir='./')
 ase_calculator = Espresso(
-    label='qe_calc_opt', pseudopotentials=pseudopotentials,
-    input_data=qe_input_data, kpts={kpts_str}, profile=profile)
+    label='qe_calc_opt', command=command, pseudopotentials=pseudopotentials,
+    pseudo_dir={pseudo_dir_str}, input_data=qe_input_data, kpts={kpts_str})
 
 # Part 3: Endpoint Optimization Logic
 def optimize_endpoints():
     try:
         print("\\n>>> Optimizing Initial structure...")
         initial_atoms = read(UNOPTIMIZED_INITIAL)
-        initial_atoms.set_calculator(copy.deepcopy(ase_calculator))
+        initial_atoms.calc = copy.deepcopy(ase_calculator)
         optimizer_initial = BFGS(initial_atoms, trajectory=OPTIMIZED_INITIAL)
         optimizer_initial.run(fmax=OPTIMIZE_FMAX)
         print(f">>> Initial structure optimization complete! Saved to '{{OPTIMIZED_INITIAL}}'.")
 
         print("\\n>>> Optimizing Final structure...")
         final_atoms = read(UNOPTIMIZED_FINAL)
-        final_atoms.set_calculator(copy.deepcopy(ase_calculator))
+        final_atoms.calc = copy.deepcopy(ase_calculator)
         optimizer_final = BFGS(final_atoms, trajectory=OPTIMIZED_FINAL)
         optimizer_final.run(fmax=OPTIMIZE_FMAX)
         print(f">>> Final structure optimization complete! Saved to '{{OPTIMIZED_FINAL}}'.")
@@ -128,12 +149,12 @@ if __name__ == "__main__":
     optimize_endpoints()
 """
 
-    # --- 템플릿 2: ML-NEB 스크립트 ---
+    # --- 템플릿 2: ML-NEB 스크립트 (EspressoProfile 제거 및 command 수정) ---
     mlneb_template = f"""
 # {neb_filename} (Auto-generated)
 import copy, sys, traceback
 from ase.io import read
-from ase.calculators.espresso import Espresso, EspressoProfile
+from ase.calculators.espresso import Espresso
 from catlearn.optimize.mlneb import MLNEB
 
 # Part 1: Global Settings
@@ -142,9 +163,10 @@ OPTIMIZED_FINAL = 'final.traj'
 N_IMAGES = 5
 NEB_FMAX = 0.1
 TRAJECTORY_FILE = 'mlneb_final.traj'
-N_CORES = 12
+N_CORES = 32
 
 # Part 2: Quantum Espresso Calculator
+command = f'mpirun -np {N_CORES} pw.x -in PREFIX.pwi > PREFIX.pwo'
 pseudopotentials = {{
 {pseudos_str}
 }}
@@ -159,11 +181,9 @@ qe_input_data = {{
 {electrons_str}
     }}
 }}
-command = f'mpirun -np {{N_CORES}} pw.x'
-profile = EspressoProfile(command=command, pseudo_dir={pseudo_dir_str})
 ase_calculator = Espresso(
-    label='qe_calc_neb', pseudopotentials=pseudopotentials,
-    input_data=qe_input_data, kpts={kpts_str}, profile=profile)
+    label='qe_calc_neb', command=command, pseudopotentials=pseudopotentials,
+    pseudo_dir={pseudo_dir_str}, input_data=qe_input_data, kpts={kpts_str})
 
 # Part 3: ML-NEB Run
 def run_main_mlneb():
@@ -190,6 +210,4 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     parsed_settings = parse_qe_input()
-
     create_run_scripts(parsed_settings)
-
