@@ -29,7 +29,7 @@ BEGIN_ENGINE_INPUT
     degauss                   =  0.01
     ecutrho                   =  225.0
     ecutwfc                   =  25.0
-    ibrav                     =  12
+    ibrav                     =  0
     nat                       =  134
     nspin                     =  2
     ntyp                      =  4
@@ -877,4 +877,5 @@ END_POSITIONS
 
 END_ENGINE_INPUT
 END
+
 
