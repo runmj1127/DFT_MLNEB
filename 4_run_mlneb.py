@@ -55,11 +55,11 @@ ase_calculator = Espresso(
 # Part 3: ML-NEB Run
 def run_main_mlneb():
     print("\\n>>> ML-NEB calculation starting.")
-
+    
     # 1. 최적화된 초기/최종 구조 파일을 직접 읽어옵니다.
     initial_images = read(OPTIMIZED_INITIAL)
     final_images = read(OPTIMIZED_FINAL)
-
+    
     # 2. 읽어온 구조에 계산기를 명시적으로 연결해줍니다.
     initial_images.calc = copy.deepcopy(ase_calculator)
     final_images.calc = copy.deepcopy(ase_calculator)
@@ -72,6 +72,5 @@ def run_main_mlneb():
         print("\\n>>> ML-NEB calculation completed successfully!")
     except Exception:
         traceback.print_exc()
-
 if __name__ == "__main__":
     run_main_mlneb()
