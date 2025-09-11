@@ -47,7 +47,7 @@ qe_input_data = {
     }
 }
 command = f'mpirun -np {N_CORES} pw.x'
-profile = EspressoProfile(command=command, pseudo_dir='/home/minjae/qe-7.4.1/pseudo/')
+profile = EspressoProfile(command=command, pseudo_dir='./)
 ase_calculator = Espresso(
     label='qe_calc_opt', pseudopotentials=pseudopotentials,
     input_data=qe_input_data, kpts=(1, 1, 1), profile=profile)
