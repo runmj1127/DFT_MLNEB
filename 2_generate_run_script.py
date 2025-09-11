@@ -5,6 +5,7 @@ import sys
 def parse_qe_input(filename='espresso.neb.in'):
     """
     espresso.neb.in 파일을 파싱하여 주요 계산 파라미터를 추출합니다.
+    (문자열 값 자동 따옴표 처리 기능 추가)
     """
     settings = {
         'control': {}, 'system': {}, 'electrons': {},
@@ -44,8 +45,18 @@ def parse_qe_input(filename='espresso.neb.in'):
                 if current_block in ['CONTROL', 'SYSTEM', 'ELECTRONS']:
                     line_no_comment = stripped_line.split('!')[0]
                     if '=' in line_no_comment:
-                        key, value = [p.strip() for p in line_no_comment.split('=')]
-                        settings[current_block.lower()][key.lower().strip(',')] = value
+                        key, value = [p.strip().strip(',') for p in line_no_comment.split('=')]
+                        
+                        # --- 핵심 수정 부분 ---
+                        # 값이 숫자가 아니고, 이미 따옴표로 감싸여 있지도 않다면, 따옴표를 추가
+                        try:
+                            float(value) # 숫자인지 테스트
+                        except ValueError:
+                            if not (value.startswith("'") and value.endswith("'")):
+                                value = f"'{value}'"
+                        # --------------------
+                        
+                        settings[current_block.lower()][key.lower()] = value
                 elif in_species_block and 'ATOMIC_SPECIES' not in line_upper:
                     parts = stripped_line.split()
                     if len(parts) >= 3:
@@ -205,3 +216,4 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     parsed_settings = parse_qe_input()
     create_run_scripts(parsed_settings)
+
