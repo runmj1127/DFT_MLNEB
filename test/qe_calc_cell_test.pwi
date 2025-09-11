@@ -1,0 +1,40 @@
+&CONTROL
+   calculation      = 'relax'
+   pseudo_dir       = './pseudo/'
+/
+&SYSTEM
+   ibrav            = 12
+   a                = 13.1337185
+   b                = 13.6537423
+   c                = 28.7501618
+   cosab            = -0.61543451
+   nat              = 3
+   ntyp             = 2
+   ecutwfc          = 30.0
+   ecutrho          = 240.0
+   occupations      = "'smearing'"
+   smearing         = "'gaussian'"
+   celldm(1)        = 24.819131082503862
+   celldm(2)        = 1.039594559606253
+   celldm(3)        = 2.1890344155008346
+   celldm(4)        = -0.6154345100000002
+/
+&ELECTRONS
+   mixing_beta      = 0.7
+/
+&IONS
+/
+&CELL
+/
+
+ATOMIC_SPECIES
+O 15.999 O.pbe-rrkjus.UPF
+H 1.008 H.pbe-rrkjus.UPF
+
+K_POINTS gamma
+
+ATOMIC_POSITIONS angstrom
+O 5.0000000000 5.0000000000 5.0000000000 
+H 5.7000000000 5.0000000000 5.0000000000 
+H 4.3000000000 5.0000000000 5.0000000000 
+

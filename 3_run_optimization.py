@@ -11,19 +11,18 @@ UNOPTIMIZED_FINAL = 'final_unoptimized.traj'
 OPTIMIZED_INITIAL = 'initial.traj'
 OPTIMIZED_FINAL = 'final.traj'
 OPTIMIZE_FMAX = 0.1
-N_CORES = 32
 
 # Part 2: Quantum Espresso Calculator
-
+N_CORES = 32
 pseudopotentials = {
-            'O': '4.388911',
-            'Cu': '9.223352',
-            'N': '7.530768',
-            'H': '7.966563'
+            'O': 'O.pbe-rrkjus.UPF',
+            'Cu': 'Cu.pbe-n-van_ak.UPF',
+            'N': 'N.pbe-rrkjus.UPF',
+            'H': 'H.pbe-rrkjus.UPF'
 }
 input_data = {
     'control': {
-        'verbosity': "low"
+        'verbosity': '"low"'
     },
     'system': {
         'degauss': 0.01,
@@ -33,26 +32,31 @@ input_data = {
         'nat': 134,
         'nspin': 2,
         'ntyp': 4,
-        'occupations': "smearing",
-        'smearing': "gaussian",
+        'occupations': '"smearing"',
+        'smearing': 'methfessel-paxton',
         'starting_magnetization(1)': 0.0,
         'starting_magnetization(2)': 0.2
     },
     'electrons': {
         'conv_thr': 1.0e-4,
-        'diagonalization': "david",
+        'diagonalization': '"david"',
         'electron_maxstep': 200,
         'mixing_beta': 0.1,
-        'startingpot': "atomic",
-        'startingwfc': "atomic+random"
+        'startingpot': '"atomic"',
+        'startingwfc': '"atomic+random"'
     }
 }
-
-command = f'mpirun -np {N_CORES} pw.x -in PREFIX.pwi > PREFIX.pwo'
+kpts = (1, 1, 1)
 
 ase_calculator = Espresso(
-    label='qe_calc_opt', command=command, pseudopotentials=pseudopotentials,
-    pseudo_dir='./pseudo/', input_data=input_data, kpts=(1, 1, 1))
+    pseudopotentials=pseudopotentials,
+    input_data=input_data,
+    kpts=kpts,
+    pseudo_dir='./',
+    nprocs=N_CORES,
+    executable='pw.x')
+
+ase_calculator.set_label('qe_calc_opt')
 
 # Part 3: Endpoint Optimization Logic
 def optimize_endpoints():
@@ -62,14 +66,14 @@ def optimize_endpoints():
         initial_atoms.calc = copy.deepcopy(ase_calculator)
         optimizer_initial = BFGS(initial_atoms, trajectory=OPTIMIZED_INITIAL)
         optimizer_initial.run(fmax=OPTIMIZE_FMAX)
-        print(f">>> Initial structure optimization complete! Saved to '{OPTIMIZED_INITIAL}'.")
+        print(f">>> Initial structure optimization complete!")
 
         print("\n>>> Optimizing Final structure...")
         final_atoms = read(UNOPTIMIZED_FINAL)
         final_atoms.calc = copy.deepcopy(ase_calculator)
         optimizer_final = BFGS(final_atoms, trajectory=OPTIMIZED_FINAL)
         optimizer_final.run(fmax=OPTIMIZE_FMAX)
-        print(f">>> Final structure optimization complete! Saved to '{OPTIMIZED_FINAL}'.")
+        print(f">>> Final structure optimization complete!")
     except Exception:
         traceback.print_exc()
 
