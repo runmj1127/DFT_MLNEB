@@ -47,14 +47,11 @@ def parse_qe_input(filename='espresso.neb.in'):
                     if '=' in line_no_comment:
                         key, value = [p.strip().strip(',') for p in line_no_comment.split('=')]
                         
-                        # --- 핵심 수정 부분 ---
-                        # 값이 숫자가 아니고, 이미 따옴표로 감싸여 있지도 않다면, 따옴표를 추가
                         try:
-                            float(value) # 숫자인지 테스트
+                            float(value)
                         except ValueError:
                             if not (value.startswith("'") and value.endswith("'")):
                                 value = f"'{value}'"
-                        # --------------------
                         
                         settings[current_block.lower()][key.lower()] = value
                 elif in_species_block and 'ATOMIC_SPECIES' not in line_upper:
@@ -101,7 +98,6 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
     kpts_str = settings['kpoints_str']
 
     # --- 공통 설정 텍스트 생성 ---
-    # 이 블록은 생성될 스크립트 파일 내부에 그대로 들어갈 텍스트 덩어리입니다.
     common_calculator_setup = f"""
 pseudopotentials = {{
 {pseudos_str}
@@ -117,6 +113,7 @@ input_data = {{
 {electrons_str}
     }}
 }}
+kpts = {kpts_str}
 """
 
     # --- 템플릿 1: 최적화 스크립트 ---
@@ -139,13 +136,13 @@ N_CORES = 32
 {common_calculator_setup}
 ase_calculator = Espresso(
     label='qe_calc_opt',
-    nprocs=N_CORES,           # 사용할 코어 수를 직접 지정
-    executable='pw.x',        # 실행 파일 이름 지정
+    nprocs=N_CORES,
+    executable='pw.x',
     pseudopotentials=pseudopotentials,
     pseudo_dir='./pseudo/',
     input_data=input_data,
-    kpts=kpts_str
-)
+    kpts=kpts)
+
 # Part 3: Endpoint Optimization Logic
 def optimize_endpoints():
     try:
@@ -187,16 +184,23 @@ N_CORES = 32
 
 # Part 2: Quantum Espresso Calculator
 {common_calculator_setup}
-command = f'mpirun -np {{N_CORES}} pw.x -in PREFIX.pwi > PREFIX.pwo'
-
 ase_calculator = Espresso(
-    label='qe_calc_neb', command=command, pseudopotentials=pseudopotentials,
-    pseudo_dir='./pseudo/', input_data=input_data, kpts={kpts_str})
+    label='qe_calc_neb',
+    nprocs=N_CORES,
+    executable='pw.x',
+    pseudopotentials=pseudopotentials,
+    pseudo_dir='./pseudo/',
+    input_data=input_data,
+    kpts=kpts)
 
 # Part 3: ML-NEB Run
 def run_main_mlneb():
     print("\\n>>> ML-NEB calculation starting.")
-    mlneb = MLNEB(start=OPTIMIZED_INITIAL, end=OPTIMIZED_FINAL,
+    initial_atoms = read(OPTIMIZED_INITIAL)
+    final_images = read(OPTIMIZED_FINAL)
+    initial_atoms.calc = copy.deepcopy(ase_calculator)
+    final_images.calc = copy.deepcopy(ase_calculator)
+    mlneb = MLNEB(start=initial_atoms, end=final_images,
                   ase_calc=copy.deepcopy(ase_calculator), n_images=N_IMAGES, k=0.1)
     try:
         mlneb.run(fmax=NEB_FMAX, trajectory=TRAJECTORY_FILE)
@@ -219,5 +223,3 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     parsed_settings = parse_qe_input()
     create_run_scripts(parsed_settings)
-
-
