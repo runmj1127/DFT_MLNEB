@@ -1,4 +1,4 @@
-# 2_generate_run_scripts.py (수정된 최종 버전)
+# 2_generate_run_scripts.py (모든 오류 수정된 최종 버전)
 
 import sys
 
@@ -90,7 +90,7 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
     electrons_str = format_dict_items(settings['electrons'])
     kpts_str = settings['kpoints_str']
 
-    # --- 템플릿 1: 최적화 스크립트 (EspressoProfile 제거 및 command 수정) ---
+    # --- 템플릿 1: 최적화 스크립트 ---
     optimization_template = f"""
 # {opt_filename} (Auto-generated)
 import copy, sys, traceback
@@ -149,7 +149,7 @@ if __name__ == "__main__":
     optimize_endpoints()
 """
 
-    # --- 템플릿 2: ML-NEB 스크립트 (EspressoProfile 제거 및 command 수정) ---
+    # --- 템플릿 2: ML-NEB 스크립트 ---
     mlneb_template = f"""
 # {neb_filename} (Auto-generated)
 import copy, sys, traceback
