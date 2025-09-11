@@ -1,4 +1,4 @@
-# 2_generate_run_scripts.py (모든 문제를 해결한 최종 버전)
+# 2_generate_run_scripts.py (pseudo_dir 고정된 최종 버전)
 
 import sys
 import re
@@ -15,24 +15,20 @@ def parse_qe_input(filename='espresso.neb.in'):
     with open(filename, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # --- Namelist 파싱 (정규식을 사용하여 더 안정적으로 추출) ---
+    # --- Namelist 파싱 ---
     for section in ['CONTROL', 'SYSTEM', 'ELECTRONS']:
-        # re.DOTALL은 줄바꿈을 포함하여 매칭
         match = re.search(f'&{section}(.*?)/', content, re.IGNORECASE | re.DOTALL)
         if match:
             for line in match.group(1).splitlines():
-                line = line.split('!')[0].strip() # 주석 제거
+                line = line.split('!')[0].strip()
                 if '=' in line:
                     parts = [p.strip().strip(',') for p in line.split('=')]
                     key, value = parts[0].lower(), parts[1]
-                    
-                    # 값이 문자열이면 (숫자로 변환 불가) 따옴표 유지 또는 추가
                     try:
                         float(value)
                     except ValueError:
                         if not (value.startswith("'") and value.endswith("'")):
                             value = f"'{value}'"
-                    
                     settings[section.lower()][key] = value
 
     # --- ATOMIC_SPECIES 파싱 ---
@@ -52,12 +48,27 @@ def create_run_scripts(settings, opt_filename='3_run_optimization.py', neb_filen
     """
     def format_dict_items(d, indent=8):
         prefix = ' ' * indent
-        # ASE와 호환성을 위해, 값에 이미 따옴표가 있으면 추가하지 않음
         return ',\n'.join([f"{prefix}'{k}': {v}" for k, v in d.items()])
 
     def format_pseudos(d, indent=12):
         prefix = ' ' * indent
         return ',\n'.join([f"{prefix}'{k}': '{v}'" for k, v in d.items()])
+
+    # --- ASE와 호환되도록 데이터 정리 ---
+    # 1. pseudo_dir은 Espresso()에 직접 전달할 것이므로 input_data에서 제거
+    if 'pseudo_dir' in settings['control']:
+        del settings['control']['pseudo_dir']
+    
+    # 2. ASE 정책에 따라 ibrav=0으로 강제 설정하고 충돌 가능성 있는 키 제거
+    lattice_keys_to_remove = ['a', 'b', 'c', 'cosab', 'cosac', 'cosbc']
+    for key in lattice_keys_to_remove:
+        if key in settings['system']:
+            del settings['system'][key]
+    settings['system']['ibrav'] = 0
+    
+    # 3. 호환성을 위해 smearing 방식 수정
+    if 'smearing' in settings['system']:
+        settings['system']['smearing'] = "'methfessel-paxton'"
 
     # --- 템플릿에 들어갈 문자열 준비 ---
     pseudos_str = format_pseudos(settings['pseudos'])
@@ -91,6 +102,7 @@ ase_calculator = Espresso(
     pseudopotentials=pseudopotentials,
     input_data=input_data,
     kpts=kpts,
+    pseudo_dir='./pseudo/',  # <-- 여기를 './pseudo/'로 고정했습니다.
     nprocs=N_CORES,
     executable='pw.x')
 """
