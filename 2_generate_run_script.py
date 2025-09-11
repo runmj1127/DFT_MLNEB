@@ -102,7 +102,7 @@ ase_calculator = Espresso(
     pseudopotentials=pseudopotentials,
     input_data=input_data,
     kpts=kpts,
-    pseudo_dir='./pseudo/',  # <-- 여기를 './pseudo/'로 고정했습니다.
+    pseudo_dir='./',
     nprocs=N_CORES,
     executable='pw.x')
 """
@@ -164,3 +164,4 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     parsed_settings = parse_qe_input()
     create_run_scripts(parsed_settings)
+
