@@ -109,10 +109,11 @@ def run_main_mlneb():
         print(f"\n!!! 오류: 입력 파일(.pwo 또는 .neb.in)을 찾을 수 없습니다.")
         sys.exit(1)
     except Exception as e:
-        print(f"\n!!! ML-NEB 계산 중 오류 발생: {e}")
+        print(f"\n!!! ML-NEB 계산 중 오류 발생: ")
         traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
     run_main_mlneb()
+
 
