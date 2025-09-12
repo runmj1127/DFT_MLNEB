@@ -1,9 +1,13 @@
+# 1_pwi_generator.py (pseudo_dir를 './'로 고정하는 최종 버전)
+
 import sys
+import re
 
 def create_pwi_files(input_filename='espresso.neb.in'):
     """
     espresso.neb.in 파일을 파싱하여, 첫 번째와 마지막 이미지를 위한
     별도의 Quantum ESPRESSO 입력 파일(.pwi) 두 개를 생성합니다.
+    pseudo_dir는 './'로 고정됩니다.
     """
     
     namelist_text = ""
@@ -12,25 +16,29 @@ def create_pwi_files(input_filename='espresso.neb.in'):
     final_coords_text = ""
     k_points_text = ""
 
-    # 상태 플래그
     in_namelist = False
     in_species = False
-    current_image = None # 'FIRST' 또는 'LAST'
+    current_image = None
 
     with open(input_filename, 'r', encoding='utf-8') as f:
         for line in f:
             s_line, u_line = line.strip(), line.strip().upper()
 
-            # Namelist 섹션(&CONTROL, &SYSTEM, &ELECTRONS) 텍스트 추출
             if u_line.startswith('&'): in_namelist = True
             if in_namelist:
+                # 기존 pseudo_dir 라인은 무시
+                if 'pseudo_dir' in s_line.lower():
+                    continue
                 # neb 계산 종류를 relax로 변경
                 if 'calculation' in s_line.lower() and 'neb' in s_line.lower():
                     line = "    calculation = 'relax'\n"
                 namelist_text += line
-                if u_line.startswith('/'): in_namelist = False
+                if u_line.startswith('/'):
+                    # &CONTROL 섹션이 끝나는 지점에 pseudo_dir 추가
+                    if '&CONTROL' in namelist_text:
+                         namelist_text = namelist_text.replace('&CONTROL', "&CONTROL\n    pseudo_dir = './'")
+                    in_namelist = False
             
-            # ATOMIC_SPECIES 섹션 텍스트 추출
             elif 'ATOMIC_SPECIES' in u_line:
                 in_species = True
                 species_text += line
@@ -40,11 +48,9 @@ def create_pwi_files(input_filename='espresso.neb.in'):
             elif 'BEGIN_POSITIONS' in u_line:
                 in_species = False
             
-            # K_POINTS 섹션 텍스트 추출
             elif 'K_POINTS' in u_line:
                 k_points_text += line
 
-            # ATOMIC_POSITIONS 섹션 텍스트 추출
             elif 'FIRST_IMAGE' in u_line: current_image = 'FIRST'; continue
             elif 'LAST_IMAGE' in u_line: current_image = 'LAST'; continue
             elif 'ATOMIC_POSITIONS' in u_line: continue
