@@ -110,7 +110,9 @@ def run_main_mlneb():
         sys.exit(1)
     except Exception as e:
         print(f"\n!!! ML-NEB 계산 중 오류 발생: {e}")
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
     run_main_mlneb()
+
