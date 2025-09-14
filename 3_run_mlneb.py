@@ -1,9 +1,9 @@
-# 3_run_mlneb.py (모든 오류를 수정한 최종 버전)
+# 3_run_mlneb.py (energy 속성 오류를 수정한 최종 버전)
 
 import sys
 import copy
 import re
-import traceback  # <-- NameError 해결을 위해 추가
+import traceback
 from ase.io import read
 from ase.calculators.espresso import Espresso
 from catlearn.optimize.mlneb import MLNEB
@@ -51,7 +51,6 @@ def run_main_mlneb():
         print("--- ML-NEB 계산 시작 ---")
         pseudos, control, system, electrons, kpts = parse_qe_parameters(INPUT_QE_FILE)
         
-        # PropertyNotImplementedError 해결: .pwo에서 읽은 구조에 계산기를 다시 붙여줌
         initial_atoms = read(OPTIMIZED_INITIAL_PWO, format='espresso-out')
         final_atoms = read(OPTIMIZED_FINAL_PWO, format='espresso-out')
 
@@ -64,7 +63,8 @@ def run_main_mlneb():
             pseudo_dir=PSEUDO_DIR, nprocs=N_CORES, executable='pw.x')
         ase_calculator.set_label('qe_calc_neb')
 
-        # 계산기 재연결
+        # --- 핵심 수정 부분 ---
+        # .pwo에서 읽은 구조에 계산기를 다시 명시적으로 연결
         initial_atoms.calc = copy.deepcopy(ase_calculator)
         final_atoms.calc = copy.deepcopy(ase_calculator)
 
