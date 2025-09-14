@@ -61,12 +61,10 @@ def run_main_mlneb():
         # --- 핵심 수정 부분: 에너지와 힘을 직접 추출하여 새로 연결 ---
         print(">>> Re-attaching energy and forces to atoms...")
         initial_energy = initial_atoms.get_potential_energy()
-        initial_forces = initial_atoms.get_forces()
         # 계산기 정보를 덮어씁니다.
         initial_atoms.calc = SinglePointCalculator(initial_atoms, energy=initial_energy, forces=initial_forces)
 
         final_energy = final_atoms.get_potential_energy()
-        final_forces = final_atoms.get_forces()
         # 계산기 정보를 덮어씁니다.
         final_atoms.calc = SinglePointCalculator(final_atoms, energy=final_energy, forces=final_forces)
         # -----------------------------------------------------------
@@ -97,3 +95,4 @@ def run_main_mlneb():
 
 if __name__ == "__main__":
     run_main_mlneb()
+
