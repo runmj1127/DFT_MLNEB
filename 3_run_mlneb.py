@@ -1,105 +1,110 @@
-# 3_run_mlneb.py (energy/forces 재계산 로직이 포함된 최종 완성본)
+# run_optimization.py (ASE 계산기를 사용하지 않고 직접 QE를 실행하는 최종 스크립트)
 
 import sys
-import copy
-import re
-import traceback
-from ase.io import read
-from ase.calculators.espresso import Espresso
-from catlearn.optimize.mlneb import MLNEB
+import numpy as np
+import subprocess
+from ase import Atoms
+from ase.io import read, write
 
-# --- 1. 사용자 설정 부분 ---
-OPTIMIZED_INITIAL_PWO = 'initial_opt.pwo'
-OPTIMIZED_FINAL_PWO = 'final_opt.pwo'
+# --- 1. 사용자 설정 ---
 INPUT_QE_FILE = 'espresso.neb.in'
 PSEUDO_DIR = './'
 N_CORES = 16
-N_IMAGES = 5
-NEB_FMAX = 0.1
-NEB_TRAJECTORY_FILE = 'mlneb_final.traj'
+OPTIMIZE_FMAX = 0.1 # 이 스크립트에서는 직접 사용되지 않음
+OPTIMIZED_INITIAL_FILE = 'initial_optimized.traj'
+OPTIMIZED_FINAL_FILE = 'final_optimized.traj'
 
-# --- 2. 안정적인 QE 파라미터 파서 ---
-def parse_qe_parameters(filename):
-    settings = {'control': {}, 'system': {}, 'electrons': {}, 'pseudos': {}, 'kpts': (1, 1, 1)}
-    with open(filename, 'r', encoding='utf-8') as f: content = f.read()
-    for section in ['CONTROL', 'SYSTEM', 'ELECTRONS']:
-        match = re.search(f'&{section}(.*?)/', content, re.IGNORECASE | re.DOTALL)
-        if match:
-            for line in match.group(1).splitlines():
-                line = line.split('!')[0].strip()
-                if '=' in line:
-                    parts = [p.strip().strip(',') for p in line.split('=')]
-                    key, value = parts[0].lower(), parts[1]
-                    try: float(value)
-                    except ValueError:
-                        if not (value.startswith("'") and value.endswith("'")): value = f"'{value}'"
-                    settings[section.lower()][key] = value
-    match = re.search(r'ATOMIC_SPECIES.*?((?:\n\s*\w+\s+[\d.]+\s+\S+)+)', content, re.IGNORECASE | re.DOTALL)
-    if match:
-        for line in match.group(1).strip().splitlines():
-            parts = line.split()
-            if len(parts) >= 3: settings['pseudos'][parts[0]] = parts[2]
-    match = re.search(r'K_POINTS\s+.*?[\r\n]+([\s\d\.]+)', content, re.IGNORECASE)
-    if match:
-        k_values = [int(v) for v in match.group(1).strip().split()[:3]]
-        settings['kpts'] = tuple(k_values)
-    return settings['pseudos'], settings['control'], settings['system'], settings['electrons'], settings['kpts']
+# --- 2. 수동 파서 (구조와 설정 텍스트만 추출) ---
+def final_parser(filename):
+    cell_params, pseudos, namelist_text = {}, {}, ""
+    initial_coords, final_coords = [], []
+    current_block, current_image, in_species, in_namelist = None, None, False, False
 
-# --- 3. 메인 워크플로우 ---
-def run_main_mlneb():
-    try:
-        print("--- ML-NEB 계산 시작 ---")
-        pseudos, control, system, electrons, kpts = parse_qe_parameters(INPUT_QE_FILE)
-        
-        # 1. .pwo 파일에서 최적화된 구조 '만' 읽어옵니다.
-        print(f">>> Reading optimized structures from .pwo files...")
-        initial_atoms = read(OPTIMIZED_INITIAL_PWO, format='espresso-out')
-        final_atoms = read(OPTIMIZED_FINAL_PWO, format='espresso-out')
+    with open(filename, 'r', encoding='utf-8') as f:
+        for line in f:
+            s_line, u_line = line.strip(), line.strip().upper()
+            if not s_line or s_line.startswith('!'): continue
+            if 'BEGIN_ENGINE_INPUT' in u_line: continue
+            if 'END_ENGINE_INPUT' in u_line: break
+            if u_line.startswith('&'): in_namelist = True
+            if in_namelist:
+                namelist_text += line
+                if u_line.startswith('/'): in_namelist = False
+                if '=' in s_line:
+                    key = s_line.split('=')[0].strip().lower()
+                    if key in ['a', 'b', 'c', 'cosab']:
+                        cell_params[key] = float(s_line.split('=')[1].split('!')[0].strip())
+            elif 'ATOMIC_SPECIES' in u_line: in_species = True; continue
+            elif 'BEGIN_POSITIONS' in u_line: in_species = False; continue
+            if in_species:
+                parts = s_line.split()
+                if len(parts) >= 3: pseudos[parts[0]] = parts[2]
+            if 'FIRST_IMAGE' in u_line: current_image = initial_coords; continue
+            if 'LAST_IMAGE' in u_line: current_image = final_coords; continue
+            if 'ATOMIC_POSITIONS' in u_line: continue
+            if current_image is not None and len(s_line.split()) >= 4 and s_line.split()[0].isalpha():
+                current_image.append(s_line)
+    
+    a, b, c, cosab = cell_params.get('a'), cell_params.get('b'), cell_params.get('c'), cell_params.get('cosab', 0)
+    sinab = (1.0 - cosab**2)**0.5
+    cell = np.array([[a, 0.0, 0.0], [b * cosab, b * sinab, 0.0], [0.0, 0.0, c]])
+    
+    initial_atoms = Atoms(symbols=[line.split()[0] for line in initial_coords], 
+                          positions=[[float(p) for p in line.split()[1:4]] for line in initial_coords], 
+                          cell=cell, pbc=True)
+    final_atoms = Atoms(symbols=[line.split()[0] for line in final_coords], 
+                        positions=[[float(p) for p in line.split()[1:4]] for line in final_coords], 
+                        cell=cell, pbc=True)
+    return initial_atoms, final_atoms, pseudos, namelist_text
 
-        # 2. 에너지와 힘을 '재계산'하기 위한 계산기 설정 (calculation = 'scf')
-        scf_input_data = {'control': control, 'system': system, 'electrons': electrons}
-        scf_input_data['control']['calculation'] = "'scf'" # 단일 에너지/힘 계산
-        if 'pseudo_dir' in scf_input_data['control']: del scf_input_data['control']['pseudo_dir']
-        
-        scf_calculator = Espresso(
-            pseudopotentials=pseudos, input_data=scf_input_data, kpts=kpts,
-            pseudo_dir=PSEUDO_DIR, nprocs=N_CORES, executable='pw.x')
-        
-        # 3. 각 구조에 계산기를 붙이고 에너지/힘을 명시적으로 재계산하여 저장
-        print(">>> Attaching calculator and re-calculating energy/forces for endpoints...")
-        initial_atoms.calc = copy.deepcopy(scf_calculator)
-        initial_atoms.calc.set_label('qe_calc_initial_scf')
-        initial_energy = initial_atoms.get_potential_energy()
-        initial_forces = initial_atoms.get_forces()
-        print(f">>> Initial structure E={initial_energy:.4f} eV")
+# --- 3. QE 실행 함수 ---
+def run_qe_optimization(label, atoms, pseudos, namelist_text):
+    pwi_filename = f'{label}.pwi'
+    pwo_filename = f'{label}.pwo'
+    
+    with open(pwi_filename, 'w') as f:
+        f.write(namelist_text.replace("calculation = 'neb'", "calculation = 'relax'"))
+        f.write(f'ATOMIC_SPECIES\n')
+        for symbol, pfile in pseudos.items():
+            f.write(f' {symbol} 1.0 {PSEUDO_DIR}{pfile}\n')
+        f.write('ATOMIC_POSITIONS {angstrom}\n')
+        for symbol, pos in zip(atoms.get_chemical_symbols(), atoms.get_positions()):
+            f.write(f' {symbol} {pos[0]:.8f} {pos[1]:.8f} {pos[2]:.8f}\n')
+        f.write('K_POINTS {gamma}\n 1 1 1 0 0 0\n')
 
-        final_atoms.calc = copy.deepcopy(scf_calculator)
-        final_atoms.calc.set_label('qe_calc_final_scf')
-        final_energy = final_atoms.get_potential_energy()
-        final_forces = final_atoms.get_forces()
-        print(f">>> Final structure E={final_energy:.4f} eV")
-        
-        # 4. NEB 계산을 위한 계산기 설정 (calculation = 'neb')
-        neb_input_data = {'control': control, 'system': system, 'electrons': electrons}
-        neb_input_data['control']['calculation'] = "'neb'"
-        neb_calculator = Espresso(
-            pseudopotentials=pseudos, input_data=neb_input_data, kpts=kpts,
-            pseudo_dir=PSEUDO_DIR, nprocs=N_CORES, executable='pw.x')
-        neb_calculator.set_label('qe_calc_neb')
-        
-        # 5. ML-NEB 실행
-        print("\n>>> Initializing MLNEB object...")
-        mlneb = MLNEB(start=initial_atoms, end=final_atoms,
-                      ase_calc=copy.deepcopy(neb_calculator), n_images=N_IMAGES, k=0.1)
-        
-        print("\n>>> Starting ML-NEB run...")
-        mlneb.run(fmax=NEB_FMAX, trajectory=NEB_TRAJECTORY_FILE)
-        print(f"\n>>> ML-NEB calculation completed!")
+    command = f"mpirun -np {N_CORES} pw.x -in {pwi_filename}"
+    print(f"\n>>> Running command: {command}")
+    
+    with open(pwo_filename, 'w') as out_file:
+        result = subprocess.run(command, shell=True, stdout=out_file, stderr=subprocess.PIPE, text=True)
 
-    except Exception:
-        print(f"\n!!! ML-NEB 계산 중 오류 발생:")
-        traceback.print_exc()
-        sys.exit(1)
+    with open(pwo_filename, 'r') as out_file: pwo_content = out_file.read()
+
+    if result.returncode != 0 or "JOB DONE." not in pwo_content:
+         print(f"\n!!! QE calculation FAILED for {label} !!!")
+         print("--- QE Error Message (from stderr) ---")
+         print(result.stderr)
+         print("\n--- QE Output File Content (last 50 lines) ---")
+         print(''.join(pwo_content.splitlines(True)[-50:]))
+         sys.exit(1)
+    
+    return read(pwo_filename, format='espresso-out')
+
+# --- 4. 메인 워크플로우 ---
+def run_workflow():
+    print("--- 0단계: espresso.neb.in 파일 직접 파싱 ---")
+    initial_atoms, final_atoms, pseudos, namelist_text = final_parser(INPUT_QE_FILE)
+
+    print("\n--- 1단계: 구조 최적화 시작 ---")
+    
+    optimized_initial = run_qe_optimization('initial_opt', initial_atoms, pseudos, namelist_text)
+    write(OPTIMIZED_INITIAL_FILE, optimized_initial)
+    print(f">>> Initial structure optimization complete!")
+
+    optimized_final = run_qe_optimization('final_opt', final_atoms, pseudos, namelist_text)
+    write(OPTIMIZED_FINAL_FILE, optimized_final)
+    print(f">>> Final structure optimization complete!")
 
 if __name__ == "__main__":
-    run_main_mlneb()
+    run_workflow()
+    print("\n--- 최적화 작업이 성공적으로 완료되었습니다. ---")
