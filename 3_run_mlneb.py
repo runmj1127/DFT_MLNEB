@@ -62,11 +62,11 @@ def run_main_mlneb():
         print(">>> Re-attaching energy and forces to atoms...")
         initial_energy = initial_atoms.get_potential_energy()
         # 계산기 정보를 덮어씁니다.
-        initial_atoms.calc = SinglePointCalculator(initial_atoms, energy=initial_energy, forces=initial_forces)
+        initial_atoms.calc = SinglePointCalculator(initial_atoms, energy=initial_energy)
 
         final_energy = final_atoms.get_potential_energy()
         # 계산기 정보를 덮어씁니다.
-        final_atoms.calc = SinglePointCalculator(final_atoms, energy=final_energy, forces=final_forces)
+        final_atoms.calc = SinglePointCalculator(final_atoms, energy=final_energy)
         # -----------------------------------------------------------
 
         # NEB 계산을 위한 input_data 준비
@@ -95,4 +95,5 @@ def run_main_mlneb():
 
 if __name__ == "__main__":
     run_main_mlneb()
+
 
