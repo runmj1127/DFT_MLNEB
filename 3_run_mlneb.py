@@ -1,4 +1,4 @@
-# 3_run_mlneb.py (파서 기능이 포함된 최종 완성본)
+# 3_run_mlneb.py (energy 속성 오류를 수정한 최종 버전)
 
 import sys
 import copy
@@ -20,9 +20,6 @@ NEB_TRAJECTORY_FILE = 'mlneb_final.traj'
 
 # --- 2. 안정적인 QE 파라미터 파서 ---
 def parse_qe_parameters(filename):
-    """
-    espresso.neb.in 파일을 안정적으로 파싱하여 ASE와 호환되는 설정을 추출합니다.
-    """
     settings = {'control': {}, 'system': {}, 'electrons': {}, 'pseudos': {}, 'kpts': (1, 1, 1)}
     with open(filename, 'r', encoding='utf-8') as f: content = f.read()
     for section in ['CONTROL', 'SYSTEM', 'ELECTRONS']:
@@ -66,6 +63,8 @@ def run_main_mlneb():
             pseudo_dir=PSEUDO_DIR, nprocs=N_CORES, executable='pw.x')
         ase_calculator.set_label('qe_calc_neb')
 
+        # --- 핵심 수정 부분 ---
+        # .pwo에서 읽은 구조에 계산기를 다시 명시적으로 연결
         initial_atoms.calc = copy.deepcopy(ase_calculator)
         final_atoms.calc = copy.deepcopy(ase_calculator)
 
