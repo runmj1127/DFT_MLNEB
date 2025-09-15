@@ -1,6 +1,7 @@
 # 1_pwi_generator.py (모든 파싱 문제를 해결한 최종 버전)
 
 import sys
+import re
 
 def create_pwi_files(input_filename='espresso.neb.in'):
     """
@@ -81,3 +82,4 @@ def create_pwi_files(input_filename='espresso.neb.in'):
 
 if __name__ == "__main__":
     create_pwi_files()
+
