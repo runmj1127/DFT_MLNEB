@@ -85,4 +85,16 @@ def manual_parse_and_save(input_filename='espresso.neb.in'):
         write('initial_unoptimized.traj', initial_atoms)
         print("-> 'initial_unoptimized.traj' 파일이 생성되었습니다.")
         
-        final_atoms = Atoms(symbols=[d['symbol'] for d in final_data], positions=[d['position'] for d in final_data
+        final_atoms = Atoms(symbols=[d['symbol'] for d in final_data], positions=[d['position'] for d in final_data], cell=cell, pbc=True)
+        write('final_unoptimized.traj', final_atoms)
+        print("-> 'final_unoptimized.traj' 파일이 생성되었습니다.")
+
+    except FileNotFoundError:
+        print(f"오류: 입력 파일 '{input_filename}'을 찾을 수 없습니다.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"파일 처리 중 예기치 않은 오류가 발생했습니다: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    manual_parse_and_save()
