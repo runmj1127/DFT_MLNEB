@@ -1,4 +1,4 @@
-# 1_pwi_generator.py (모든 구조의 파싱 오류를 해결한 최종 버전)
+# 1_pwi_generator.py (모든 파싱 문제를 해결한 최종 버전)
 
 import sys
 import re
@@ -23,7 +23,7 @@ def create_pwi_files(input_filename='espresso.neb.in'):
             match = re.search(f'&{section}(.*?)/', engine_input, re.IGNORECASE | re.DOTALL)
             if match:
                 namelists_text += match.group(0) + '\n\n'
-        
+
         species_text = re.search(r'ATOMIC_SPECIES.*?(?=\n\s*(?:&|K_POINTS|BEGIN_POSITIONS|CELL_PARAMETERS|$))', engine_input, re.IGNORECASE | re.DOTALL).group(0)
         k_points_text = re.search(r'K_POINTS.*?(?:\n.*)', engine_input, re.IGNORECASE).group(0)
 
@@ -44,7 +44,6 @@ def create_pwi_files(input_filename='espresso.neb.in'):
 
         # --- initial_opt.pwi 파일 생성 ---
         with open('initial_opt.pwi', 'w') as f:
-            # calculation 종류를 'relax'로, pseudo_dir를 './'로 강제 설정
             temp_namelists = re.sub(r"calculation\s*=\s*['\"]\s*neb\s*['\"]", "calculation = 'relax'", namelists, flags=re.IGNORECASE)
             if 'pseudo_dir' not in temp_namelists.lower():
                  temp_namelists = temp_namelists.replace('&CONTROL', "&CONTROL\n    pseudo_dir = './'")
