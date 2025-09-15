@@ -34,6 +34,7 @@ def create_pwi_files(input_filename='espresso.neb.in'):
         
         # 정규식을 사용하여 각 이미지 블록을 정확히 분리
         images = re.findall(r'(FIRST_IMAGE|LAST_IMAGE)\s*\n\s*ATOMIC_POSITIONS.*?\n(.*?)(?=FIRST_IMAGE|INTERMEDIATE_IMAGE|LAST_IMAGE|END_POSITIONS)', positions_block, re.DOTALL)
+        print(images)
         
         image_data = dict(images)
         first_image_coords_text = image_data.get('FIRST_IMAGE')
@@ -72,3 +73,4 @@ def create_pwi_files(input_filename='espresso.neb.in'):
 
 if __name__ == "__main__":
     create_pwi_files()
+
