@@ -1,4 +1,4 @@
-# 1_NEB_pwi_converter.py (파싱 버그를 모두 수정한 최종 버전)
+# 1_pwi_generator.py (파싱 버그를 모두 수정한 최종 버전)
 
 import sys
 import re
