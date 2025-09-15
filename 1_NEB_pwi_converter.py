@@ -1,7 +1,6 @@
 # 1_pwi_generator.py (모든 파싱 문제를 해결한 최종 버전)
 
 import sys
-import re
 
 def create_pwi_files(input_filename='espresso.neb.in'):
     """
@@ -10,61 +9,70 @@ def create_pwi_files(input_filename='espresso.neb.in'):
     """
     try:
         with open(input_filename, 'r', encoding='utf-8') as f:
-            content = f.read()
+            lines = f.readlines()
 
-        # --- 모든 섹션을 정규식으로 한번에 추출 ---
-        engine_input_match = re.search(r'BEGIN_ENGINE_INPUT(.*?)END_ENGINE_INPUT', content, re.DOTALL)
-        if not engine_input_match:
-            raise ValueError("BEGIN_ENGINE_INPUT 또는 END_ENGINE_INPUT을 찾을 수 없습니다.")
-        engine_input = engine_input_match.group(1)
+        # --- 파일 내용을 섹션별로 저장할 변수 ---
+        namelist_text = ""
+        species_text = ""
+        k_points_text = ""
+        first_image_coords = ""
+        last_image_coords = ""
         
-        namelists_text = ""
-        for section in ['CONTROL', 'SYSTEM', 'ELECTRONS']:
-            match = re.search(f'&{section}(.*?)/', engine_input, re.IGNORECASE | re.DOTALL)
-            if match:
-                namelists_text += match.group(0) + '\n\n'
+        # --- 상태를 추적하는 변수 ---
+        reading_section = None # 현재 읽고 있는 섹션 (eg. 'NAMELIST', 'SPECIES', 'FIRST', 'LAST')
 
-        species_text = re.search(r'ATOMIC_SPECIES.*?(?=\n\s*(?:&|K_POINTS|BEGIN_POSITIONS|CELL_PARAMETERS|$))', engine_input, re.IGNORECASE | re.DOTALL).group(0)
-        k_points_text = re.search(r'K_POINTS.*?(?:\n.*)', engine_input, re.IGNORECASE).group(0)
+        for line in lines:
+            stripped_line = line.strip()
+            u_line = stripped_line.upper()
 
-        positions_block_match = re.search(r'BEGIN_POSITIONS(.*?)END_POSITIONS', content, re.DOTALL)
-        if not positions_block_match:
-            raise ValueError("BEGIN_POSITIONS 또는 END_POSITIONS를 찾을 수 없습니다.")
-        positions_block = positions_block_match.group(1)
+            # 새로운 섹션 시작 감지
+            if 'BEGIN_ENGINE_INPUT' in u_line: continue
+            if 'END_ENGINE_INPUT' in u_line: break
+            if u_line.startswith('&'): reading_section = 'NAMELIST'
+            elif 'ATOMIC_SPECIES' in u_line: reading_section = 'SPECIES'
+            elif 'K_POINTS' in u_line: reading_section = 'K_POINTS'
+            elif 'FIRST_IMAGE' in u_line: reading_section = 'FIRST'
+            elif 'LAST_IMAGE' in u_line: reading_section = 'LAST'
+            elif 'INTERMEDIATE_IMAGE' in u_line: reading_section = 'INTERMEDIATE'
+            
+            # 현재 섹션에 따라 내용 저장
+            if reading_section == 'NAMELIST':
+                namelist_text += line
+                if u_line.startswith('/'): reading_section = None
+            elif reading_section == 'SPECIES':
+                species_text += line
+            elif reading_section == 'K_POINTS':
+                k_points_text += line
+            elif reading_section == 'FIRST' and len(stripped_line.split()) >= 4:
+                first_image_coords += line
+            elif reading_section == 'LAST' and len(stripped_line.split()) >= 4:
+                last_image_coords += line
         
-        # 정규식을 사용하여 각 이미지 블록을 정확히 분리
-        images = re.findall(r'(FIRST_IMAGE|LAST_IMAGE)\s*\n\s*ATOMIC_POSITIONS.*?\n(.*?)(?=FIRST_IMAGE|INTERMEDIATE_IMAGE|LAST_IMAGE|END_POSITIONS)', positions_block, re.DOTALL)
-        print(images)
-        
-        image_data = dict(images)
-        first_image_coords_text = image_data.get('FIRST_IMAGE')
-        last_image_coords_text = image_data.get('LAST_IMAGE')
-
-        if not first_image_coords_text or not last_image_coords_text:
-            raise ValueError("FIRST_IMAGE 또는 LAST_IMAGE의 좌표 블록을 찾을 수 없습니다.")
+        if not first_image_coords or not last_image_coords:
+            raise ValueError("FIRST_IMAGE 또는 LAST_IMAGE의 좌표를 찾을 수 없습니다.")
 
         # --- initial_opt.pwi 파일 생성 ---
         with open('initial_opt.pwi', 'w') as f:
-            temp_namelists = re.sub(r"calculation\s*=\s*['\"]\s*neb\s*['\"]", "calculation = 'relax'", namelists, flags=re.IGNORECASE)
+            temp_namelists = namelist_text.replace("calculation = 'neb'", "calculation = 'relax'")
             if 'pseudo_dir' not in temp_namelists.lower():
                  temp_namelists = temp_namelists.replace('&CONTROL', "&CONTROL\n    pseudo_dir = './'")
             else:
                  temp_namelists = re.sub(r"pseudo_dir\s*=\s*.*", "    pseudo_dir = './'", temp_namelists, flags=re.IGNORECASE)
 
             f.write(temp_namelists)
-            f.write(species_text + '\n\n')
+            f.write(species_text + '\n')
             f.write('ATOMIC_POSITIONS {angstrom}\n')
-            f.write(first_image_coords_text.strip() + '\n\n')
-            f.write(k_points_text + '\n')
+            f.write(first_image_coords)
+            f.write(k_points_text)
         print("-> 'initial_opt.pwi' 파일이 생성되었습니다.")
 
         # --- final_opt.pwi 파일 생성 ---
         with open('final_opt.pwi', 'w') as f:
             f.write(temp_namelists)
-            f.write(species_text + '\n\n')
+            f.write(species_text + '\n')
             f.write('ATOMIC_POSITIONS {angstrom}\n')
-            f.write(last_image_coords_text.strip() + '\n\n')
-            f.write(k_points_text + '\n')
+            f.write(last_image_coords)
+            f.write(k_points_text)
         print("-> 'final_opt.pwi' 파일이 생성되었습니다.")
 
     except Exception as e:
@@ -73,4 +81,3 @@ def create_pwi_files(input_filename='espresso.neb.in'):
 
 if __name__ == "__main__":
     create_pwi_files()
-
