@@ -1,0 +1,46 @@
+&CONTROL
+    calculation   = "relax"
+    forc_conv_thr =  0.001
+    max_seconds   =  86400.0
+    nstep         =  100
+    pseudo_dir    = "/root/MLNEB/pseudo"
+    verbosity     = "low"
+/
+
+&SYSTEM
+    a           =  20.0
+    degauss     =  0.01
+    ecutrho     =  225.0
+    ecutwfc     =  25.0
+    ibrav       =  1
+    nat         =  3
+    ntyp        =  2
+    occupations = "smearing"
+    smearing    = "gaussian"
+/
+
+&ELECTRONS
+    conv_thr         =  1.0e-6
+    diagonalization  = "david"
+    electron_maxstep =  200
+    mixing_beta      =  0.1
+    startingpot      = "atomic"
+    startingwfc      = "atomic+random"
+/
+
+&IONS
+    ion_dynamics = "bfgs"
+/
+
+K_POINTS {automatic}
+ 6  6  6  0 0 0
+
+ATOMIC_SPECIES
+N      14.00674  N.pbe-rrkjus.UPF
+O      15.99940  O.pbe-rrkjus.UPF
+
+ATOMIC_POSITIONS {angstrom}
+N      10.000000  10.000000  10.375400
+N      10.000000  10.000000   9.624600
+O      10.000000  10.500000   8.500000
+
